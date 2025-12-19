@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Emotion Detection — Live Demo</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="header">
+    <p class="eyebrow">ML portfolio project</p>
+    <h1>Facial Emotion Recognition</h1>
+    <p class="subtitle">Real-time inference in the browser via ONNX Runtime Web</p>
+  </header>
+
+  <main class="main">
+    <section class="camera-panel">
+      <div class="video-wrap">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="overlay" width="320" height="240"></canvas>
+      </div>
+      <div class="controls">
+        <button id="start-btn" class="btn btn-primary">Start camera</button>
+        <button id="stop-btn" class="btn btn-secondary" disabled>Stop</button>
+      </div>
+      <p id="status" class="status">Loading model…</p>
+    </section>
+
+    <section class="results-panel">
+      <div class="prediction-card">
+        <p class="label">Predicted emotion</p>
+        <p id="emotion" class="emotion">—</p>
+        <p id="confidence" class="confidence">confidence —</p>
+      </div>
+
+      <div class="bars" id="bars"></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <a href="https://github.com/natagapova/emotions-with-audio" target="_blank" rel="noopener">source code</a>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.0/dist/ort.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
