@@ -75,9 +75,16 @@ def export_coreml(
     )
 
     if quantize:
-        mlmodel = ct.models.neural_network.quantization_utils.quantize_weights(
-            mlmodel, nbits=8
+        from coremltools.optimize.coreml import (
+            OpLinearQuantizerConfig,
+            OptimizationConfig,
+            linear_quantize_weights,
         )
+
+        config = OptimizationConfig(
+            global_config=OpLinearQuantizerConfig(mode="linear_symmetric", weight_threshold=512),
+        )
+        mlmodel = linear_quantize_weights(mlmodel, config)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     mlmodel.save(str(output_path))
@@ -105,13 +112,22 @@ def quantize_and_compare(
     fp32_size = model_size_mb(fp32_pt_path)
     fp32_latency_mean, fp32_latency_std = measure_latency(fp32_model, device)
 
-    # INT8 dynamic quantization (PyTorch)
-    int8_model = torch.quantization.quantize_dynamic(
-        EmotionCNN().cpu(),
+    # INT8 dynamic quantization (PyTorch) — Linear layers only
+    fp32_cpu = EmotionCNN().cpu()
+    fp32_cpu.load_state_dict(fp32_model.cpu().state_dict())
+    fp32_cpu.eval()
+
+    supported_engines = torch.backends.quantized.supported_engines
+    if "qnnpack" in supported_engines:
+        torch.backends.quantized.engine = "qnnpack"
+    elif supported_engines:
+        torch.backends.quantized.engine = supported_engines[0]
+
+    int8_model = torch.ao.quantization.quantize_dynamic(
+        fp32_cpu,
         {nn.Linear},
         dtype=torch.qint8,
     )
-    int8_model.load_state_dict(fp32_model.cpu().state_dict())
     int8_model.eval()
 
     _, y_pred_int8 = collect_predictions(int8_model, loaders["test"], torch.device("cpu"))

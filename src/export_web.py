@@ -13,7 +13,7 @@ from src.model import EmotionCNN
 def export_onnx(
     checkpoint_path: Path,
     output_path: Path,
-    opset_version: int = 13,
+    opset_version: int = 18,
 ) -> Path:
     model = EmotionCNN()
     checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)

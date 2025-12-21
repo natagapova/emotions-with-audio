@@ -1,0 +1,49 @@
+{
+  "accuracy": 0.4672610755084982,
+  "macro_f1": 0.44391062089311106,
+  "per_class": {
+    "angry": {
+      "precision": 0.26848249027237353,
+      "recall": 0.5621181262729125,
+      "f1-score": 0.36339697169190255,
+      "support": 491
+    },
+    "disgust": {
+      "precision": 0.22797927461139897,
+      "recall": 0.8,
+      "f1-score": 0.3548387096774194,
+      "support": 55
+    },
+    "fear": {
+      "precision": 0.2847682119205298,
+      "recall": 0.32575757575757575,
+      "f1-score": 0.303886925795053,
+      "support": 528
+    },
+    "happy": {
+      "precision": 0.9102773246329527,
+      "recall": 0.6348122866894198,
+      "f1-score": 0.7479892761394102,
+      "support": 879
+    },
+    "neutral": {
+      "precision": 0.30097087378640774,
+      "recall": 0.10437710437710437,
+      "f1-score": 0.155,
+      "support": 594
+    },
+    "sad": {
+      "precision": 0.7664670658682635,
+      "recall": 0.6153846153846154,
+      "f1-score": 0.6826666666666666,
+      "support": 416
+    },
+    "surprise": {
+      "precision": 0.5057283142389526,
+      "recall": 0.4936102236421725,
+      "f1-score": 0.4995957962813258,
+      "support": 626
+    }
+  },
+  "confusion_matrix_path": "models/evaluation/confusion_matrix.png"
+}

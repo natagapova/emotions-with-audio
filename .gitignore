@@ -6,8 +6,9 @@ models/*.onnx
 models/*.mlpackage/
 models/*.mlmodel
 models/training_log.csv
-models/evaluation/
 models/quantization_report.json
+models/model_fp32.pt
+models/model_int8.pt
 
 # python
 __pycache__/
