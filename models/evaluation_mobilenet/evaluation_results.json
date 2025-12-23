@@ -1,0 +1,49 @@
+{
+  "accuracy": 0.3455001393145723,
+  "macro_f1": 0.32507597742172695,
+  "per_class": {
+    "angry": {
+      "precision": 0.2539130434782609,
+      "recall": 0.2973523421588595,
+      "f1-score": 0.27392120075046905,
+      "support": 491
+    },
+    "disgust": {
+      "precision": 0.10287081339712918,
+      "recall": 0.7818181818181819,
+      "f1-score": 0.18181818181818182,
+      "support": 55
+    },
+    "fear": {
+      "precision": 0.257372654155496,
+      "recall": 0.18181818181818182,
+      "f1-score": 0.21309655937846836,
+      "support": 528
+    },
+    "happy": {
+      "precision": 0.6444444444444445,
+      "recall": 0.32992036405005687,
+      "f1-score": 0.436418359668924,
+      "support": 879
+    },
+    "neutral": {
+      "precision": 0.30918727915194344,
+      "recall": 0.2946127946127946,
+      "f1-score": 0.3017241379310345,
+      "support": 594
+    },
+    "sad": {
+      "precision": 0.41597796143250687,
+      "recall": 0.7259615384615384,
+      "f1-score": 0.5288966725043783,
+      "support": 416
+    },
+    "surprise": {
+      "precision": 0.3908523908523909,
+      "recall": 0.3003194888178914,
+      "f1-score": 0.33965672990063234,
+      "support": 626
+    }
+  },
+  "confusion_matrix_path": "models/evaluation_mobilenet/confusion_matrix.png"
+}

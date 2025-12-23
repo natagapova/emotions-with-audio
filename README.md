@@ -8,11 +8,12 @@ Full ML engineering cycle: data preparation → training → evaluation → INT8
 
 | architecture | params | FP32 accuracy | INT8 accuracy | FP32 size (MB) | INT8 size (MB) | latency FP32 (ms) | latency INT8 (ms) |
 |---|---|---|---|---|---|---|---|
-| EmotionCNN (4 conv blocks) | 1,701,607 | 46.7% | 46.9% | 6.50 | 2.75 | 1.36 ± 0.28 | 1.68 ± 0.64 |
+| **EmotionCNN** (primary) | 1,701,607 | **46.7%** | 46.9% | 6.50 | 2.75 | 1.36 ± 0.28 | 1.68 ± 0.64 |
+| MobileNetV3-Small (transfer) | 1,526,567 | 34.5% | — | 4.24 | — | — | — |
 
-Metrics measured on the FER2013 PrivateTest split (3,589 images). Latency: 100 forward passes on Apple M-series CPU (MPS for FP32, CPU for INT8), batch size 1.
+Metrics on FER2013 PrivateTest (3,589 images). CNN outperforms MobileNetV3 on 48×48 grayscale — ImageNet pretraining doesn't transfer well at this resolution.
 
-Macro F1: **0.444**
+Macro F1 (CNN): **0.444**
 
 ### Confusion matrix
 
@@ -26,7 +27,11 @@ Macro F1: **0.444**
 - **disgust** is the rarest class (1.5% of train). High recall (80%) but low precision (23%) — the model over-predicts disgust when uncertain.
 - **angry** has decent recall (56%) but low precision (27%) — angry faces are confused with fear and sad.
 
-Test accuracy (~47%) is below SOTA (~75%) and the human-level benchmark (~65%), which is expected for a small from-scratch CNN without transfer learning. The numbers are honest baselines for an iterative portfolio project.
+Test accuracy (~47%) is below SOTA (~75%) and the human-level benchmark (~65%). Honest baselines for an iterative portfolio project.
+
+### Memory-efficient data loading
+
+CSV splits are lazily converted to `.npz` and loaded via `numpy` memory-mapped arrays (~61 MB train split vs ~250 MB in pandas). Training defaults to `batch_size=32` and `num_workers=0` to keep RAM usage low.
 
 ## Project structure
 
@@ -35,7 +40,7 @@ emotion-detection/
   data/                  # FER2013 CSV splits (gitignored)
   src/
     dataset.py           # FER2013Dataset + WeightedRandomSampler
-    model.py             # EmotionCNN baseline
+    model.py             # EmotionCNN + MobileNetV3
     train.py             # training with early stopping
     evaluate.py          # metrics + confusion matrix
     quantize.py          # FP32 → INT8 + Core ML export
@@ -52,6 +57,7 @@ emotion-detection/
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+pip install -e .   # optional, removes need for PYTHONPATH
 ```
 
 ## Download data
@@ -65,21 +71,22 @@ Downloads FER2013 from HuggingFace (`DerrickUnleashed/FER-2013`) with native Tra
 ## Train
 
 ```bash
-PYTHONPATH=. python src/train.py
+python src/train.py                        # baseline CNN
+python src/train.py --arch mobilenet_v3      # transfer learning experiment
 ```
 
-Adam lr=1e-3, ReduceLROnPlateau, batch size 64, early stopping (patience=7). Logs saved to `models/training_log.csv`.
+Adam + ReduceLROnPlateau, batch size 32, early stopping (patience=7). Checkpoints: `models/best_{arch}.pt`.
 
 ## Evaluate
 
 ```bash
-PYTHONPATH=. python src/evaluate.py
+python src/evaluate.py --checkpoint models/best_cnn.pt
 ```
 
 ## Quantize + Core ML
 
 ```bash
-PYTHONPATH=. python src/quantize.py
+python src/quantize.py --checkpoint models/best_cnn.pt
 ```
 
 Exports `models/emotion_cnn_fp32.mlpackage` and `models/emotion_cnn_int8.mlpackage`.
@@ -87,7 +94,7 @@ Exports `models/emotion_cnn_fp32.mlpackage` and `models/emotion_cnn_int8.mlpacka
 ## Web demo
 
 ```bash
-PYTHONPATH=. python src/export_web.py   # exports demo/model.onnx
+python src/export_web.py --checkpoint models/best_cnn.pt
 cd demo && python -m http.server 8080
 ```
 
