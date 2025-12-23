@@ -7,7 +7,7 @@ from pathlib import Path
 
 import torch
 
-from src.model import EmotionCNN
+from src.model import load_model_from_checkpoint
 
 
 def export_onnx(
@@ -15,10 +15,7 @@ def export_onnx(
     output_path: Path,
     opset_version: int = 18,
 ) -> Path:
-    model = EmotionCNN()
-    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
-    model.load_state_dict(checkpoint["model_state_dict"])
-    model.eval()
+    model = load_model_from_checkpoint(checkpoint_path, torch.device("cpu"))
 
     dummy_input = torch.randn(1, 1, 48, 48)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -39,7 +36,7 @@ def export_onnx(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export model to ONNX")
-    parser.add_argument("--checkpoint", type=Path, default=Path("models/best_model.pt"))
+    parser.add_argument("--checkpoint", type=Path, default=Path("models/best_cnn.pt"))
     parser.add_argument("--output", type=Path, default=Path("demo/model.onnx"))
     args = parser.parse_args()
     export_onnx(args.checkpoint, args.output)

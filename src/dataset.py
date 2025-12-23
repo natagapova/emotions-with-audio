@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import torch
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 from torchvision import transforms
-import numpy as np
 
 EMOTION_LABELS = [
     "angry",
@@ -23,6 +24,32 @@ EMOTION_LABELS = [
 
 NUM_CLASSES = len(EMOTION_LABELS)
 IMAGE_SIZE = 48
+
+
+def _csv_to_npz(csv_path: Path, npz_path: Path) -> None:
+    """Convert CSV split to compressed NPZ for memory-mapped loading."""
+    with csv_path.open(newline="") as f:
+        row_count = sum(1 for _ in f) - 1
+
+    pixels = np.empty((row_count, IMAGE_SIZE, IMAGE_SIZE), dtype=np.uint8)
+    emotions = np.empty(row_count, dtype=np.int64)
+
+    with csv_path.open(newline="") as f:
+        reader = csv.DictReader(f)
+        for i, row in enumerate(reader):
+            pixels[i] = np.fromstring(row["pixels"], sep=" ", dtype=np.uint8).reshape(
+                IMAGE_SIZE, IMAGE_SIZE
+            )
+            emotions[i] = int(row["emotion"])
+
+    np.savez_compressed(npz_path, pixels=pixels, emotions=emotions)
+
+
+def _ensure_npz(csv_path: Path) -> Path:
+    npz_path = csv_path.with_suffix(".npz")
+    if not npz_path.exists() or npz_path.stat().st_mtime < csv_path.stat().st_mtime:
+        _csv_to_npz(csv_path, npz_path)
+    return npz_path
 
 
 def _build_transforms(augment: bool) -> transforms.Compose:
@@ -51,24 +78,26 @@ class FER2013Dataset(Dataset):
         csv_path: str | Path,
         augment: bool = False,
     ) -> None:
-        self.df = pd.read_csv(csv_path)
+        csv_path = Path(csv_path)
+        npz_path = _ensure_npz(csv_path)
+        data = np.load(npz_path, mmap_mode="r")
+        self.pixels = data["pixels"]
+        self.emotions = data["emotions"]
         self.transform = _build_transforms(augment)
 
     def __len__(self) -> int:
-        return len(self.df)
+        return len(self.emotions)
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
-        row = self.df.iloc[idx]
-        pixels = np.fromstring(row["pixels"], sep=" ", dtype=np.uint8)
-        image = Image.fromarray(pixels.reshape(IMAGE_SIZE, IMAGE_SIZE), mode="L")
+        image = Image.fromarray(self.pixels[idx], mode="L")
         image = self.transform(image)
-        label = int(row["emotion"])
+        label = int(self.emotions[idx])
         return image, label
 
 
 def get_class_counts(csv_path: str | Path) -> np.ndarray:
     """Return per-class sample counts indexed by emotion id."""
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(csv_path, usecols=["emotion"])
     counts = np.zeros(NUM_CLASSES, dtype=np.int64)
     for emotion, count in df["emotion"].value_counts().items():
         counts[int(emotion)] = count
@@ -88,11 +117,11 @@ def make_weighted_sampler(csv_path: str | Path) -> WeightedRandomSampler:
     counts = get_class_counts(csv_path).astype(np.float64)
     counts = np.maximum(counts, 1.0)
     sample_weights = 1.0 / counts
-    df = pd.read_csv(csv_path)
-    weights = sample_weights[df["emotion"].values]
+    emotions = pd.read_csv(csv_path, usecols=["emotion"])["emotion"].values
+    weights = sample_weights[emotions]
     return WeightedRandomSampler(
         weights=torch.from_numpy(weights).double(),
-        num_samples=len(df),
+        num_samples=len(emotions),
         replacement=True,
     )
 

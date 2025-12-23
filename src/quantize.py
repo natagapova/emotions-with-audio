@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import tempfile
 import time
 from pathlib import Path
 
@@ -14,7 +15,7 @@ import torch.nn as nn
 
 from src.dataset import create_dataloaders
 from src.evaluate import collect_predictions, load_model
-from src.model import EmotionCNN
+from src.model import create_model, load_model_from_checkpoint
 from src.train import get_device
 from sklearn.metrics import accuracy_score
 
@@ -59,7 +60,7 @@ def measure_latency(
 
 
 def export_coreml(
-    model: EmotionCNN,
+    model: nn.Module,
     output_path: Path,
     quantize: bool = False,
 ) -> Path:
@@ -95,25 +96,27 @@ def quantize_and_compare(
     checkpoint_path: Path,
     data_dir: Path,
     output_dir: Path,
-    batch_size: int = 64,
+    batch_size: int = 32,
 ) -> dict:
     device = get_device()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # FP32 PyTorch model
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    arch = checkpoint.get("arch", "cnn")
+
     fp32_model = load_model(checkpoint_path, device)
-    loaders = create_dataloaders(data_dir, batch_size=batch_size, use_weighted_sampler=False)
+    loaders = create_dataloaders(
+        data_dir, batch_size=batch_size, use_weighted_sampler=False, num_workers=0
+    )
 
     y_true, y_pred_fp32 = collect_predictions(fp32_model, loaders["test"], device)
     fp32_accuracy = accuracy_score(y_true, y_pred_fp32)
 
-    fp32_pt_path = output_dir / "model_fp32.pt"
-    torch.save(fp32_model.state_dict(), fp32_pt_path)
-    fp32_size = model_size_mb(fp32_pt_path)
+    fp32_size = model_size_mb(checkpoint_path)
     fp32_latency_mean, fp32_latency_std = measure_latency(fp32_model, device)
 
-    # INT8 dynamic quantization (PyTorch) — Linear layers only
-    fp32_cpu = EmotionCNN().cpu()
+    # INT8 dynamic quantization (Linear layers only)
+    fp32_cpu = create_model(arch).cpu()
     fp32_cpu.load_state_dict(fp32_model.cpu().state_dict())
     fp32_cpu.eval()
 
@@ -133,20 +136,21 @@ def quantize_and_compare(
     _, y_pred_int8 = collect_predictions(int8_model, loaders["test"], torch.device("cpu"))
     int8_accuracy = accuracy_score(y_true, y_pred_int8)
 
-    int8_pt_path = output_dir / "model_int8.pt"
-    torch.save(int8_model.state_dict(), int8_pt_path)
-    int8_size = model_size_mb(int8_pt_path)
+    with tempfile.NamedTemporaryFile(suffix=".pt") as tmp:
+        torch.save(int8_model.state_dict(), tmp.name)
+        int8_size = model_size_mb(Path(tmp.name))
+
     int8_latency_mean, int8_latency_std = measure_latency(int8_model, torch.device("cpu"))
 
-    # Core ML exports
-    fp32_mlpackage = output_dir / "emotion_cnn_fp32.mlpackage"
-    int8_mlpackage = output_dir / "emotion_cnn_int8.mlpackage"
-    export_coreml(fp32_model, fp32_mlpackage, quantize=False)
-    export_coreml(fp32_model, int8_mlpackage, quantize=True)
+    fp32_mlpackage = output_dir / f"emotion_{arch}_fp32.mlpackage"
+    int8_mlpackage = output_dir / f"emotion_{arch}_int8.mlpackage"
+    export_coreml(fp32_cpu, fp32_mlpackage, quantize=False)
+    export_coreml(fp32_cpu, int8_mlpackage, quantize=True)
 
     accuracy_drop = (fp32_accuracy - int8_accuracy) * 100
 
     report = {
+        "arch": arch,
         "fp32_accuracy": fp32_accuracy,
         "int8_accuracy": int8_accuracy,
         "accuracy_drop_pp": accuracy_drop,
@@ -160,7 +164,7 @@ def quantize_and_compare(
         "coreml_int8_path": str(int8_mlpackage),
     }
 
-    report_path = output_dir / "quantization_report.json"
+    report_path = output_dir / f"quantization_report_{arch}.json"
     with report_path.open("w") as f:
         json.dump(report, f, indent=2)
 
@@ -178,10 +182,10 @@ def quantize_and_compare(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Quantize and export to Core ML")
-    parser.add_argument("--checkpoint", type=Path, default=Path("models/best_model.pt"))
+    parser.add_argument("--checkpoint", type=Path, default=Path("models/best_cnn.pt"))
     parser.add_argument("--data-dir", type=Path, default=Path("data"))
     parser.add_argument("--output-dir", type=Path, default=Path("models"))
-    parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--batch-size", type=int, default=32)
     args = parser.parse_args()
     quantize_and_compare(args.checkpoint, args.data_dir, args.output_dir, args.batch_size)
 

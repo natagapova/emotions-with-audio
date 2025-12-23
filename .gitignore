@@ -1,14 +1,16 @@
 # data and model artifacts
 data/
+data/*.npz
 models/*.pt
 models/*.pth
 models/*.onnx
 models/*.mlpackage/
 models/*.mlmodel
-models/training_log.csv
-models/quantization_report.json
-models/model_fp32.pt
-models/model_int8.pt
+models/training_log*.csv
+models/quantization_report*.json
+models/training_output.log
+demo/model.onnx
+demo/model.onnx.data
 
 # python
 __pycache__/

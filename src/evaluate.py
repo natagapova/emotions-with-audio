@@ -18,16 +18,12 @@ from sklearn.metrics import (
 )
 
 from src.dataset import EMOTION_LABELS, create_dataloaders
-from src.model import EmotionCNN
+from src.model import load_model_from_checkpoint
 from src.train import get_device
 
 
-def load_model(checkpoint_path: Path, device: torch.device) -> EmotionCNN:
-    model = EmotionCNN().to(device)
-    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    model.load_state_dict(checkpoint["model_state_dict"])
-    model.eval()
-    return model
+def load_model(checkpoint_path: Path, device: torch.device) -> torch.nn.Module:
+    return load_model_from_checkpoint(checkpoint_path, device)
 
 
 def collect_predictions(
@@ -144,7 +140,7 @@ def evaluate(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate emotion CNN")
-    parser.add_argument("--checkpoint", type=Path, default=Path("models/best_model.pt"))
+    parser.add_argument("--checkpoint", type=Path, default=Path("models/best_cnn.pt"))
     parser.add_argument("--data-dir", type=Path, default=Path("data"))
     parser.add_argument("--output-dir", type=Path, default=Path("models/evaluation"))
     parser.add_argument("--batch-size", type=int, default=64)

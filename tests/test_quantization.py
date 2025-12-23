@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 
-REPORT_PATH = Path("models/quantization_report.json")
+REPORT_PATH = Path("models/quantization_report_cnn.json")
 MAX_ACCURACY_DROP_PP = 3.0
 
 

@@ -15,16 +15,16 @@ from PIL import Image
 from torchvision import transforms
 
 from src.dataset import EMOTION_LABELS, IMAGE_SIZE
-from src.model import EmotionCNN
+from src.model import load_model_from_checkpoint
 
-CHECKPOINT_PATH = Path("models/best_model.pt")
+CHECKPOINT_PATH = Path("models/best_cnn.pt")
 MAX_RECENT_PREDICTIONS = 100
 
 app = FastAPI(title="Emotion Detection API", version="1.0.0")
 
 _request_count = 0
 _recent_confidences: deque[float] = deque(maxlen=MAX_RECENT_PREDICTIONS)
-_model: EmotionCNN | None = None
+_model: torch.nn.Module | None = None
 _transform = transforms.Compose([
     transforms.Grayscale(num_output_channels=1),
     transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
@@ -33,14 +33,10 @@ _transform = transforms.Compose([
 ])
 
 
-def get_model() -> EmotionCNN:
+def get_model() -> torch.nn.Module:
     global _model
     if _model is None:
-        model = EmotionCNN()
-        checkpoint = torch.load(CHECKPOINT_PATH, map_location="cpu", weights_only=False)
-        model.load_state_dict(checkpoint["model_state_dict"])
-        model.eval()
-        _model = model
+        _model = load_model_from_checkpoint(CHECKPOINT_PATH, torch.device("cpu"))
     return _model
 
 
