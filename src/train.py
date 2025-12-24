@@ -10,7 +10,7 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
-from torch.optim import Adam
+from torch.optim import Adam, AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from src.dataset import compute_class_weights, create_dataloaders
@@ -80,12 +80,24 @@ def train(
     lr: float = 1e-3,
     patience: int = 7,
     freeze_epochs: int = 0,
+    augment_strength: str = "basic",
+    label_smoothing: float = 0.0,
+    weight_decay: float = 0.0,
+    run_suffix: str = "",
 ) -> Path:
     device = get_device()
-    print(f"Using device: {device}, arch: {arch}")
+    print(
+        f"Using device: {device}, arch: {arch}, "
+        f"augment: {augment_strength}, label_smoothing: {label_smoothing}"
+    )
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    loaders = create_dataloaders(data_dir, batch_size=batch_size, num_workers=0)
+    loaders = create_dataloaders(
+        data_dir,
+        batch_size=batch_size,
+        num_workers=0,
+        augment_strength=augment_strength,
+    )
 
     model = create_model(arch).to(device)
     if freeze_epochs > 0:
@@ -95,15 +107,22 @@ def train(
     print(f"Trainable parameters: {count_parameters(model):,}")
 
     class_weights = compute_class_weights(data_dir / "fer2013_train.csv").to(device)
-    criterion = nn.CrossEntropyLoss(weight=class_weights)
-    optimizer = Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
+    criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=label_smoothing)
+
+    trainable = filter(lambda p: p.requires_grad, model.parameters())
+    if weight_decay > 0:
+        optimizer = AdamW(trainable, lr=lr, weight_decay=weight_decay)
+    else:
+        optimizer = Adam(trainable, lr=lr)
+
     scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=3)
 
-    log_path = output_dir / f"training_log_{arch}.csv"
+    name = f"{arch}{run_suffix}"
+    log_path = output_dir / f"training_log_{name}.csv"
     best_val_loss = float("inf")
     best_epoch = 0
     epochs_without_improvement = 0
-    best_checkpoint = output_dir / f"best_{arch}.pt"
+    best_checkpoint = output_dir / f"best_{name}.pt"
 
     with log_path.open("w", newline="") as f:
         writer = csv.DictWriter(
@@ -157,6 +176,7 @@ def train(
                     {
                         "epoch": epoch,
                         "arch": arch,
+                        "augment_strength": augment_strength,
                         "model_state_dict": model.state_dict(),
                         "val_loss": val_loss,
                         "val_acc": val_acc,
@@ -194,12 +214,29 @@ def main() -> None:
         default=None,
         help="Freeze MobileNet backbone for N epochs (default: 5 for mobilenet_v3)",
     )
+    parser.add_argument(
+        "--augment",
+        choices=("basic", "strong"),
+        default="basic",
+        help="Training augmentation strength",
+    )
+    parser.add_argument("--label-smoothing", type=float, default=0.0)
+    parser.add_argument("--weight-decay", type=float, default=0.0)
+    parser.add_argument("--run-suffix", type=str, default="")
     args = parser.parse_args()
 
     if args.lr is None:
         args.lr = 1e-4 if args.arch == "mobilenet_v3" else 1e-3
     if args.freeze_epochs is None:
         args.freeze_epochs = 5 if args.arch == "mobilenet_v3" else 0
+
+    # sensible defaults for strong augmentation run
+    if args.augment == "strong" and args.arch == "cnn" and args.label_smoothing == 0.0:
+        args.label_smoothing = 0.1
+    if args.augment == "strong" and args.weight_decay == 0.0:
+        args.weight_decay = 1e-4
+    if args.augment == "strong" and not args.run_suffix:
+        args.run_suffix = "_aug"
 
     train(
         data_dir=args.data_dir,
@@ -210,6 +247,10 @@ def main() -> None:
         lr=args.lr,
         patience=args.patience,
         freeze_epochs=args.freeze_epochs,
+        augment_strength=args.augment,
+        label_smoothing=args.label_smoothing,
+        weight_decay=args.weight_decay,
+        run_suffix=args.run_suffix,
     )
 
 

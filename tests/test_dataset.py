@@ -39,3 +39,14 @@ def test_tensor_range(dataset: FER2013Dataset) -> None:
 def test_label_range(dataset: FER2013Dataset) -> None:
     _, label = dataset[0]
     assert 0 <= label < NUM_CLASSES
+
+
+def test_strong_augment_tensor_range() -> None:
+    if not TRAIN_CSV.exists():
+        pytest.skip("FER2013 data not downloaded")
+    ds = FER2013Dataset(TRAIN_CSV, augment=True, augment_strength="strong")
+    for i in (0, 100, 1000):
+        image, _ = ds[i]
+        assert image.shape == (1, IMAGE_SIZE, IMAGE_SIZE)
+        assert image.min() >= -1.0
+        assert image.max() <= 1.0

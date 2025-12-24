@@ -52,21 +52,42 @@ def _ensure_npz(csv_path: Path) -> Path:
     return npz_path
 
 
-def _build_transforms(augment: bool) -> transforms.Compose:
+def _build_transforms(augment: bool, augment_strength: str = "basic") -> transforms.Compose:
     ops: list = []
     if augment:
-        ops.extend(
-            [
-                transforms.RandomHorizontalFlip(),
-                transforms.RandomRotation(10),
-            ]
-        )
+        if augment_strength == "strong":
+            ops.extend(
+                [
+                    transforms.RandomHorizontalFlip(),
+                    transforms.RandomRotation(15),
+                    transforms.RandomAffine(
+                        degrees=0,
+                        translate=(0.1, 0.1),
+                        scale=(0.9, 1.1),
+                        fill=0,
+                    ),
+                ]
+            )
+        else:
+            ops.extend(
+                [
+                    transforms.RandomHorizontalFlip(),
+                    transforms.RandomRotation(10),
+                ]
+            )
+
     ops.extend(
         [
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.5], std=[0.5]),
         ]
     )
+
+    if augment and augment_strength == "strong":
+        ops.append(
+            transforms.RandomErasing(p=0.2, scale=(0.02, 0.08), ratio=(0.5, 2.0), value=0.0)
+        )
+
     return transforms.Compose(ops)
 
 
@@ -77,13 +98,14 @@ class FER2013Dataset(Dataset):
         self,
         csv_path: str | Path,
         augment: bool = False,
+        augment_strength: str = "basic",
     ) -> None:
         csv_path = Path(csv_path)
         npz_path = _ensure_npz(csv_path)
         data = np.load(npz_path, mmap_mode="r")
         self.pixels = data["pixels"]
         self.emotions = data["emotions"]
-        self.transform = _build_transforms(augment)
+        self.transform = _build_transforms(augment, augment_strength)
 
     def __len__(self) -> int:
         return len(self.emotions)
@@ -128,16 +150,17 @@ def make_weighted_sampler(csv_path: str | Path) -> WeightedRandomSampler:
 
 def create_dataloaders(
     data_dir: str | Path,
-    batch_size: int = 64,
+    batch_size: int = 32,
     num_workers: int = 0,
     use_weighted_sampler: bool = True,
+    augment_strength: str = "basic",
 ) -> dict[str, DataLoader]:
     """Build train/val/test DataLoaders with native FER2013 splits."""
     data_dir = Path(data_dir)
     loaders: dict[str, DataLoader] = {}
 
     train_csv = data_dir / "fer2013_train.csv"
-    train_ds = FER2013Dataset(train_csv, augment=True)
+    train_ds = FER2013Dataset(train_csv, augment=True, augment_strength=augment_strength)
 
     train_kwargs: dict = {
         "batch_size": batch_size,
