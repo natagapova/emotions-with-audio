@@ -30,6 +30,7 @@ def collect_predictions(
     model: nn.Module,
     loader: torch.utils.data.DataLoader,
     device: torch.device,
+    tta: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     all_preds: list[int] = []
     all_labels: list[int] = []
@@ -37,8 +38,13 @@ def collect_predictions(
     with torch.no_grad():
         for images, labels in loader:
             images = images.to(device)
-            outputs = model(images)
-            preds = outputs.argmax(dim=1).cpu().numpy()
+            if tta:
+                logits = model(images)
+                flipped = torch.flip(images, dims=[-1])
+                logits = (logits + model(flipped)) / 2
+                preds = logits.argmax(dim=1).cpu().numpy()
+            else:
+                preds = model(images).argmax(dim=1).cpu().numpy()
             all_preds.extend(preds.tolist())
             all_labels.extend(labels.numpy().tolist())
 
@@ -84,13 +90,16 @@ def evaluate(
     checkpoint_path: Path,
     data_dir: Path,
     output_dir: Path,
-    batch_size: int = 64,
+    batch_size: int = 32,
+    tta: bool = False,
 ) -> dict:
     device = get_device()
     model = load_model(checkpoint_path, device)
-    loaders = create_dataloaders(data_dir, batch_size=batch_size, use_weighted_sampler=False)
+    loaders = create_dataloaders(
+        data_dir, batch_size=batch_size, use_weighted_sampler=False, num_workers=0
+    )
 
-    y_true, y_pred = collect_predictions(model, loaders["test"], device)
+    y_true, y_pred = collect_predictions(model, loaders["test"], device, tta=tta)
 
     accuracy = accuracy_score(y_true, y_pred)
     macro_f1 = f1_score(y_true, y_pred, average="macro")
@@ -107,6 +116,7 @@ def evaluate(
     results = {
         "accuracy": accuracy,
         "macro_f1": macro_f1,
+        "tta": tta,
         "per_class": {
             label: {
                 "precision": report[label]["precision"],
@@ -140,12 +150,13 @@ def evaluate(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate emotion CNN")
-    parser.add_argument("--checkpoint", type=Path, default=Path("models/best_cnn.pt"))
+    parser.add_argument("--checkpoint", type=Path, default=Path("models/best_cnn_aug.pt"))
     parser.add_argument("--data-dir", type=Path, default=Path("data"))
     parser.add_argument("--output-dir", type=Path, default=Path("models/evaluation"))
-    parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--tta", action="store_true", help="Test-time augmentation (hflip)")
     args = parser.parse_args()
-    evaluate(args.checkpoint, args.data_dir, args.output_dir, args.batch_size)
+    evaluate(args.checkpoint, args.data_dir, args.output_dir, args.batch_size, args.tta)
 
 
 if __name__ == "__main__":

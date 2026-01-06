@@ -11,7 +11,7 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 from torch.optim import Adam, AdamW
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau
 
 from src.dataset import compute_class_weights, create_dataloaders
 from src.model import (
@@ -84,6 +84,7 @@ def train(
     label_smoothing: float = 0.0,
     weight_decay: float = 0.0,
     run_suffix: str = "",
+    scheduler_type: str = "plateau",
 ) -> Path:
     device = get_device()
     print(
@@ -115,7 +116,12 @@ def train(
     else:
         optimizer = Adam(trainable, lr=lr)
 
-    scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=3)
+    if scheduler_type == "cosine":
+        scheduler: ReduceLROnPlateau | CosineAnnealingLR = CosineAnnealingLR(
+            optimizer, T_max=epochs, eta_min=1e-6
+        )
+    else:
+        scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=3)
 
     name = f"{arch}{run_suffix}"
     log_path = output_dir / f"training_log_{name}.csv"
@@ -134,8 +140,13 @@ def train(
         for epoch in range(1, epochs + 1):
             if freeze_epochs > 0 and epoch == freeze_epochs + 1:
                 unfreeze_backbone(model)
-                optimizer = Adam(model.parameters(), lr=lr * 0.1)
-                scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=3)
+                optimizer = AdamW(model.parameters(), lr=lr * 0.1, weight_decay=weight_decay)
+                if scheduler_type == "cosine":
+                    scheduler = CosineAnnealingLR(
+                        optimizer, T_max=epochs - epoch + 1, eta_min=1e-6
+                    )
+                else:
+                    scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=3)
                 print(f"Epoch {epoch}: backbone unfrozen, lr={lr * 0.1:.1e}")
 
             t0 = time.perf_counter()
@@ -145,7 +156,10 @@ def train(
             val_loss, val_acc = run_epoch(
                 model, loaders["val"], criterion, None, device, train=False
             )
-            scheduler.step(val_loss)
+            if scheduler_type == "cosine":
+                scheduler.step()
+            else:
+                scheduler.step(val_loss)
             current_lr = optimizer.param_groups[0]["lr"]
 
             writer.writerow(
@@ -223,6 +237,12 @@ def main() -> None:
     parser.add_argument("--label-smoothing", type=float, default=0.0)
     parser.add_argument("--weight-decay", type=float, default=0.0)
     parser.add_argument("--run-suffix", type=str, default="")
+    parser.add_argument(
+        "--scheduler",
+        choices=("plateau", "cosine"),
+        default="plateau",
+        help="LR scheduler type",
+    )
     args = parser.parse_args()
 
     if args.lr is None:
@@ -251,6 +271,7 @@ def main() -> None:
         label_smoothing=args.label_smoothing,
         weight_decay=args.weight_decay,
         run_suffix=args.run_suffix,
+        scheduler_type=args.scheduler,
     )
 
 
