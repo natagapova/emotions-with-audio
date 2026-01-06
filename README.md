@@ -8,26 +8,26 @@ Full ML engineering cycle: data preparation → training → evaluation → INT8
 
 | architecture | params | FP32 accuracy | INT8 accuracy | FP32 size (MB) | INT8 size (MB) | latency FP32 (ms) | latency INT8 (ms) |
 |---|---|---|---|---|---|---|---|
-| **EmotionCNN** (primary) | 1,701,607 | **46.7%** | 46.9% | 6.50 | 2.75 | 1.36 ± 0.28 | 1.68 ± 0.64 |
+| **EmotionCNN** + strong aug (primary) | 1,701,607 | **58.7%** | 58.9% | 6.51 | 2.75 | 1.42 ± 0.60 | 1.15 ± 0.17 |
+| EmotionCNN (basic aug) | 1,701,607 | 46.7% | 46.9% | 6.50 | 2.75 | 1.36 ± 0.28 | 1.68 ± 0.64 |
 | MobileNetV3-Small (transfer) | 1,526,567 | 34.5% | — | 4.24 | — | — | — |
 
 Metrics on FER2013 PrivateTest (3,589 images). CNN outperforms MobileNetV3 on 48×48 grayscale — ImageNet pretraining doesn't transfer well at this resolution.
 
-Macro F1 (CNN): **0.444**
+Macro F1 (CNN + strong aug): **0.569**
 
 ### Confusion matrix
 
-![Confusion matrix](models/evaluation/confusion_matrix.png)
+![Confusion matrix](models/evaluation_aug/confusion_matrix.png)
 
 ### Error analysis
 
-- **happy** and **sad** are the strongest classes (F1 0.75 and 0.68). The model reliably picks up broad positive/negative affect.
-- **neutral** is the weakest (F1 0.16, recall 10%). Neutral faces are often misclassified as happy or sad — a common FER2013 failure mode when expressions are subtle.
-- **fear** ↔ **sad** confusion: fear has low recall (33%) and gets pulled toward sad and surprise, which share similar brow/eye geometry.
-- **disgust** is the rarest class (1.5% of train). High recall (80%) but low precision (23%) — the model over-predicts disgust when uncertain.
-- **angry** has decent recall (56%) but low precision (27%) — angry faces are confused with fear and sad.
+- **happy** (F1 0.79) and **sad** (F1 0.73) remain strongest; **neutral** improved from 0.16 → 0.45 F1 with strong augmentation.
+- **fear** is still weak (F1 0.32, recall 25%) — confuses with sad and surprise.
+- **disgust** recall jumped to 89% but precision is only 45% (rare-class oversampling effect).
+- Strong aug (RandomAffine + RandomErasing + label smoothing) gave **+12 pp** test accuracy over basic aug.
 
-Test accuracy (~47%) is below SOTA (~75%) and the human-level benchmark (~65%). Honest baselines for an iterative portfolio project.
+Test accuracy (~59%) is approaching human-level (~65%) but below SOTA (~75%).
 
 ### Memory-efficient data loading
 
@@ -71,7 +71,8 @@ Downloads FER2013 from HuggingFace (`DerrickUnleashed/FER-2013`) with native Tra
 ## Train
 
 ```bash
-python src/train.py                        # baseline CNN
+python src/train.py                        # baseline CNN (basic aug)
+python src/train.py --arch cnn --augment strong   # recommended
 python src/train.py --arch mobilenet_v3      # transfer learning experiment
 ```
 
@@ -80,13 +81,13 @@ Adam + ReduceLROnPlateau, batch size 32, early stopping (patience=7). Checkpoint
 ## Evaluate
 
 ```bash
-python src/evaluate.py --checkpoint models/best_cnn.pt
+python src/evaluate.py --checkpoint models/best_cnn_aug.pt
 ```
 
 ## Quantize + Core ML
 
 ```bash
-python src/quantize.py --checkpoint models/best_cnn.pt
+python src/quantize.py --checkpoint models/best_cnn_aug.pt
 ```
 
 Exports `models/emotion_cnn_fp32.mlpackage` and `models/emotion_cnn_int8.mlpackage`.
@@ -94,7 +95,7 @@ Exports `models/emotion_cnn_fp32.mlpackage` and `models/emotion_cnn_int8.mlpacka
 ## Web demo
 
 ```bash
-python src/export_web.py --checkpoint models/best_cnn.pt
+python src/export_web.py --checkpoint models/best_cnn_aug.pt
 cd demo && python -m http.server 8080
 ```
 
