@@ -85,6 +85,7 @@ def train(
     weight_decay: float = 0.0,
     run_suffix: str = "",
     scheduler_type: str = "plateau",
+    resume_path: Path | None = None,
 ) -> Path:
     device = get_device()
     print(
@@ -101,6 +102,13 @@ def train(
     )
 
     model = create_model(arch).to(device)
+    start_epoch = 0
+    if resume_path is not None:
+        checkpoint = torch.load(resume_path, map_location=device, weights_only=False)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        start_epoch = int(checkpoint.get("epoch", 0))
+        print(f"Resumed from {resume_path} (epoch {start_epoch})")
+
     if freeze_epochs > 0:
         freeze_backbone(model)
         print(f"Backbone frozen for first {freeze_epochs} epochs")
@@ -137,7 +145,7 @@ def train(
         )
         writer.writeheader()
 
-        for epoch in range(1, epochs + 1):
+        for epoch in range(start_epoch + 1, start_epoch + epochs + 1):
             if freeze_epochs > 0 and epoch == freeze_epochs + 1:
                 unfreeze_backbone(model)
                 optimizer = AdamW(model.parameters(), lr=lr * 0.1, weight_decay=weight_decay)
@@ -243,6 +251,7 @@ def main() -> None:
         default="plateau",
         help="LR scheduler type",
     )
+    parser.add_argument("--resume", type=Path, default=None, help="Checkpoint to fine-tune from")
     args = parser.parse_args()
 
     if args.lr is None:
@@ -258,6 +267,9 @@ def main() -> None:
     if args.augment == "strong" and not args.run_suffix:
         args.run_suffix = "_aug"
 
+    if args.resume and args.lr is None:
+        args.lr = 1e-4
+
     train(
         data_dir=args.data_dir,
         output_dir=args.output_dir,
@@ -272,6 +284,7 @@ def main() -> None:
         weight_decay=args.weight_decay,
         run_suffix=args.run_suffix,
         scheduler_type=args.scheduler,
+        resume_path=args.resume,
     )
 
 
