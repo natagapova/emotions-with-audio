@@ -9,6 +9,15 @@ Full ML engineering cycle: data preparation → training → evaluation → INT8
 | architecture | params | FP32 accuracy | INT8 accuracy | FP32 size (MB) | INT8 size (MB) | latency FP32 (ms) | latency INT8 (ms) |
 |---|---|---|---|---|---|---|---|
 | **EmotionCNN** + strong aug (primary) | 1,701,607 | **58.7%** | 58.9% | 6.51 | 2.75 | 1.42 ± 0.60 | 1.15 ± 0.17 |
+
+**Inference boosts (no retraining):**
+
+| method | test accuracy |
+|---|---|
+| single model | 58.7% |
+| + TTA (hflip) | 59.9% |
+| ensemble (aug + v2) + TTA | **60.8%** |
+
 | EmotionCNN (basic aug) | 1,701,607 | 46.7% | 46.9% | 6.50 | 2.75 | 1.36 ± 0.28 | 1.68 ± 0.64 |
 | MobileNetV3-Small (transfer) | 1,526,567 | 34.5% | — | 4.24 | — | — | — |
 
@@ -27,7 +36,14 @@ Macro F1 (CNN + strong aug): **0.569**
 - **disgust** recall jumped to 89% but precision is only 45% (rare-class oversampling effect).
 - Strong aug (RandomAffine + RandomErasing + label smoothing) gave **+12 pp** test accuracy over basic aug.
 
-Test accuracy (~59%) is approaching human-level (~65%) but below SOTA (~75%).
+Test accuracy tops out at ~61% (ensemble + TTA), approaching human-level (~65%) but below SOTA (~75%).
+
+## Evaluate with TTA / ensemble
+
+```bash
+python src/evaluate.py --checkpoint models/best_cnn_aug.pt --tta
+python src/ensemble.py --tta
+```
 
 ### Memory-efficient data loading
 
